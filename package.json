@@ -22,7 +22,10 @@
     "extends": [
       "react-app",
       "react-app/jest"
-    ]
+    ],
+    "rules": {
+      "no-unused-vars": 0
+    }
   },
   "browserslist": {
     "production": [
@@ -35,8 +38,6 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
-  },
-  "rules": {
-    "no-unused-vars": false
   }
+
 }
