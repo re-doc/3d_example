@@ -12,7 +12,9 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 let container, stats;
-let camera, scene, renderer, uniforms, geometry, particleSystem, uniformsSky, resolution, requestAnimationFrameTimer, mixer, clock, plane, params;
+let camera, scene, renderer, uniforms, geometry, particleSystem, uniformsSky, resolution, requestAnimationFrameTimer, mixer, clock, plane, params, shaders = [], 
+previousRAF = null;
+let totalTime = 0;
 const particles = 10000;
 const vertexshaderSky = `
   varying vec2 vUv;
@@ -124,6 +126,169 @@ const fragmentshader = `
   }
 `
 
+THREE.ShaderChunk.fog_fragment = `
+#ifdef USE_FOG
+  vec3 fogOrigin = cameraPosition;
+  vec3 fogDirection = normalize(vWorldPosition - fogOrigin);
+  float fogDepth = distance(vWorldPosition, fogOrigin);
+
+  // f(p) = fbm( p + fbm( p ) )
+  vec3 noiseSampleCoord = vWorldPosition * 0.00025 + vec3(
+      0.0, 0.0, fogTime * 0.025);
+  float noiseSample = FBM(noiseSampleCoord + FBM(noiseSampleCoord)) * 0.5 + 0.5;
+  fogDepth *= mix(noiseSample, 1.0, saturate((fogDepth - 5000.0) / 5000.0));
+  fogDepth *= fogDepth;
+
+  float heightFactor = 0.05;
+  float fogFactor = heightFactor * exp(-fogOrigin.y * fogDensity) * (
+      1.0 - exp(-fogDepth * fogDirection.y * fogDensity)) / fogDirection.y;
+  fogFactor = saturate(fogFactor);
+
+  gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+#endif`;
+
+// change fog shader
+const _NOISE_GLSL = `
+//
+// Description : Array and textureless GLSL 2D/3D/4D simplex
+//               noise functions.
+//      Author : Ian McEwan, Ashima Arts.
+//  Maintainer : stegu
+//     Lastmod : 20201014 (stegu)
+//     License : Copyright (C) 2011 Ashima Arts. All rights reserved.
+//               Distributed under the MIT License. See LICENSE file.
+//               https://github.com/ashima/webgl-noise
+//               https://github.com/stegu/webgl-noise
+//
+
+vec3 mod289(vec3 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 mod289(vec4 x) {
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 permute(vec4 x) {
+     return mod289(((x*34.0)+1.0)*x);
+}
+
+vec4 taylorInvSqrt(vec4 r)
+{
+  return 1.79284291400159 - 0.85373472095314 * r;
+}
+
+float snoise(vec3 v)
+{
+  const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+  const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+// First corner
+  vec3 i  = floor(v + dot(v, C.yyy) );
+  vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+// Other corners
+  vec3 g = step(x0.yzx, x0.xyz);
+  vec3 l = 1.0 - g;
+  vec3 i1 = min( g.xyz, l.zxy );
+  vec3 i2 = max( g.xyz, l.zxy );
+
+  //   x0 = x0 - 0.0 + 0.0 * C.xxx;
+  //   x1 = x0 - i1  + 1.0 * C.xxx;
+  //   x2 = x0 - i2  + 2.0 * C.xxx;
+  //   x3 = x0 - 1.0 + 3.0 * C.xxx;
+  vec3 x1 = x0 - i1 + C.xxx;
+  vec3 x2 = x0 - i2 + C.yyy; // 2.0*C.x = 1/3 = C.y
+  vec3 x3 = x0 - D.yyy;      // -1.0+3.0*C.x = -0.5 = -D.y
+
+// Permutations
+  i = mod289(i);
+  vec4 p = permute( permute( permute(
+             i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+           + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+           + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+// Gradients: 7x7 points over a square, mapped onto an octahedron.
+// The ring size 17*17 = 289 is close to a multiple of 49 (49*6 = 294)
+  float n_ = 0.142857142857; // 1.0/7.0
+  vec3  ns = n_ * D.wyz - D.xzx;
+
+  vec4 j = p - 49.0 * floor(p * ns.z * ns.z);  //  mod(p,7*7)
+
+  vec4 x_ = floor(j * ns.z);
+  vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+  vec4 x = x_ *ns.x + ns.yyyy;
+  vec4 y = y_ *ns.x + ns.yyyy;
+  vec4 h = 1.0 - abs(x) - abs(y);
+
+  vec4 b0 = vec4( x.xy, y.xy );
+  vec4 b1 = vec4( x.zw, y.zw );
+
+  //vec4 s0 = vec4(lessThan(b0,0.0))*2.0 - 1.0;
+  //vec4 s1 = vec4(lessThan(b1,0.0))*2.0 - 1.0;
+  vec4 s0 = floor(b0)*2.0 + 1.0;
+  vec4 s1 = floor(b1)*2.0 + 1.0;
+  vec4 sh = -step(h, vec4(0.0));
+
+  vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+  vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+  vec3 p0 = vec3(a0.xy,h.x);
+  vec3 p1 = vec3(a0.zw,h.y);
+  vec3 p2 = vec3(a1.xy,h.z);
+  vec3 p3 = vec3(a1.zw,h.w);
+
+//Normalise gradients
+  vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+  p0 *= norm.x;
+  p1 *= norm.y;
+  p2 *= norm.z;
+  p3 *= norm.w;
+
+// Mix final noise value
+  vec4 m = max(0.5 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+  m = m * m;
+  return 105.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                dot(p2,x2), dot(p3,x3) ) );
+}
+
+float FBM(vec3 p) {
+  float value = 0.0;
+  float amplitude = 0.5;
+  float frequency = 0.0;
+  for (int i = 0; i < 6; ++i) {
+    value += amplitude * snoise(p);
+    p *= 2.0;
+    amplitude *= 0.5;
+  }
+  return value;
+}
+`;
+
+THREE.ShaderChunk.fog_pars_fragment = _NOISE_GLSL + `
+#ifdef USE_FOG
+  uniform float fogTime;
+  uniform vec3 fogColor;
+  varying vec3 vWorldPosition;
+  #ifdef FOG_EXP2
+    uniform float fogDensity;
+  #else
+    uniform float fogNear;
+    uniform float fogFar;
+  #endif
+#endif`;
+
+THREE.ShaderChunk.fog_vertex = `
+#ifdef USE_FOG
+  vec4 worldPosition = modelMatrix * vec4(position, 1.0); // From local position to global position
+  vWorldPosition = worldPosition.xyz;
+#endif`;
+
+THREE.ShaderChunk.fog_pars_vertex = `
+#ifdef USE_FOG
+  varying vec3 vWorldPosition;
+#endif`;
 
 function App() {
   const renderRef  = useRef()
@@ -134,7 +299,7 @@ function App() {
     let _renderRefC
     if (renderRef && renderRef.current) {
       
-      init(renderRef).then( animate )
+      init(renderRef).then( animate(previousRAF) )
 
       _renderRefC = renderRef.current
    
@@ -156,28 +321,6 @@ function App() {
 }
 
 async function init(renderRef) {
-
-  const { innerWidth, innerHeight } = window;
-  console.log(renderRef)
-  container = document.createElement( 'div' );
-  renderRef.current.appendChild( container );
-
-  clock = new THREE.Clock();
-
-  // SCENE
-
-  scene = new THREE.Scene();
-  // scene.background = new THREE.Color( 0xcccccc );
-  // scene.fog = new THREE.FogExp2( 0xcccccc, 0.0002 );
-  // CAMERA
-
-  camera = new THREE.PerspectiveCamera( 40, innerWidth / innerHeight, 1, 1000000 );
-  camera.position.set( 700, 200, - 500 );
-
-  const helperCamera = new THREE.CameraHelper( camera );
-  //scene.add( helperCamera );
-
-
   params = {
     intensity: 1,
     AmbientlightIntensity: 3,
@@ -192,8 +335,30 @@ async function init(renderRef) {
     centerY: 42,
     roughness: 1,
     metalness: 0,
-    scaleNum: 0.2
+    scaleNum: 0.2,
+    fogNum: 0.0000125
   };
+  const { innerWidth, innerHeight } = window;
+  console.log(renderRef)
+  container = document.createElement( 'div' );
+  renderRef.current.appendChild( container );
+
+  clock = new THREE.Clock();
+
+  // SCENE
+
+  scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2( 0xcccccc, params.fogNum );
+  // CAMERA
+
+  camera = new THREE.PerspectiveCamera( 40, innerWidth / innerHeight, 1, 1000000 );
+  camera.position.set( 700, 200, - 500 );
+
+  const helperCamera = new THREE.CameraHelper( camera );
+  //scene.add( helperCamera );
+
+
+
   const colorFormats = {
     planeColor: '#ffffff',
     int: 0xffffff,
@@ -277,6 +442,9 @@ async function init(renderRef) {
   // skyMat.colorNode = vec4( mix( color( bottomColor ), color( topColor ), h.max( 0.0 ).pow( exponent ) ), 1.0 );
   skyMat.side = THREE.BackSide;
   const sky = new THREE.Mesh( new THREE.SphereGeometry( 4000, 32, 15 ), skyMat );
+
+  sky.material.onBeforeCompile = ModifyShader;
+
   scene.add( sky );
 
   // star
@@ -415,6 +583,8 @@ async function init(renderRef) {
 	// mixer.clipAction( LittlestTokyoObject.animations[ 0 ] ).play();
   //
 
+  addBuilding()
+  
   window.addEventListener( 'resize', onWindowResize );
 
 
@@ -455,8 +625,12 @@ async function init(renderRef) {
 
     LittlestTokyoObject.scene.scale.set(value,value,value)
 
+  } ); 
+  gui.add( params, 'fogNum', 0, 0.000025 ).step( 0.0000005 ).name( 'fogNum' ).onChange( function ( value ) {
+
+    scene.fog.density = value
+
   } );
-  
   gui.add( params, 'offsetX', 0.0, 100.0 ).step( 1.0 ).name( 'offset.x' ).onChange( updateUvTransform );
   gui.add( params, 'offsetY', 0.0, 100.0 ).step( 1.0 ).name( 'offset.y' ).onChange( updateUvTransform );
   gui.add( params, 'repeatX', 0.25, 100.0 ).step( 1.0 ).name( 'repeat.x' ).onChange( updateUvTransform );
@@ -483,19 +657,19 @@ function onWindowResize() {
 
 //
 
-function animate() {
+function animate(t) {
 
   requestAnimationFrameTimer = requestAnimationFrame( animate );
 
   //nodeFrame.update();
 
-  render();
+  render(t);
 
   stats.update();
 
 }
 
-function render() {
+function render(t) {
 
   const time = Date.now() * 0.005;
 
@@ -516,6 +690,13 @@ function render() {
 
   //const delta = clock.getDelta();
   //mixer.update( delta );
+
+  if (previousRAF === null) {
+    previousRAF = t;
+  }
+
+  Step((t - previousRAF) * 0.001);
+  previousRAF = t;
 
   renderer.render( scene, camera );
 
@@ -549,5 +730,77 @@ function updateUvTransform() {
 
   renderer.render( scene, camera );
 
+}
+function Step(timeElapsed) {
+  totalTime += timeElapsed;
+  for (let s of shaders) {
+    s.uniforms.fogTime.value = totalTime;
+  }
+}
+function addBuilding() {
+  // const trunkMat = new THREE.MeshStandardMaterial({color: 0x808080});
+  // const leavesMat = new THREE.MeshStandardMaterial({color: 0x80FF80});
+  // const trunkGeo = new THREE.BoxGeometry(1, 1, 1);
+  // const leavesGeo = new THREE.ConeGeometry(1, 1, 32);
+
+  // trunkMat.onBeforeCompile = ModifyShader;
+  // leavesMat.onBeforeCompile = ModifyShader;
+
+  // for (let x = 0; x < 10; ++x) {
+  //   for (let y = 0; y < 10; ++y) {
+  //     const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+  //     const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+  //     trunk.scale.set(20, (Math.random() + 1.0) * 100.0, 20);
+  //     trunk.position.set(
+  //         4000.0 * (Math.random() * 2.0 - 1.0),
+  //         trunk.scale.y / 2.0,
+  //         4000.0 * (Math.random() * 2.0 - 1.0));
+
+  //     leaves.scale.copy(trunk.scale);
+  //     leaves.scale.set(100, trunk.scale.y * 5.0, 100);
+  //     leaves.position.set(
+  //         trunk.position.x,
+  //         leaves.scale.y / 2 + (Math.random() + 1) * 25,
+  //         trunk.position.z);
+
+  //         leaves.scale.set(leaves.scale.x * params.scaleNum, leaves.scale.y , leaves.scale.z * params.scaleNum,)
+  //         trunk.scale.set(trunk.scale.x * params.scaleNum, trunk.scale.y , trunk.scale.z * params.scaleNum,)
+  //     scene.add(trunk);
+  //     scene.add(leaves);
+  //   }
+  // }
+
+  // const monolith = new THREE.Mesh(
+  //     new THREE.BoxGeometry(500, 2000, 100),
+  //     new THREE.MeshStandardMaterial({color: 0x000000, metalness: 0.9}));
+  // monolith.position.set(0, 1000, 5000);
+  // monolith.material.onBeforeCompile = ModifyShader;
+  // scene.add(monolith);
+
+  const buildGeometry = new THREE.BoxGeometry( 1, 1, 1 );
+  geometry.translate( 0, 0.5, 0 );
+  const buildMaterial = new THREE.MeshPhongMaterial( { color: 0xffffff, flatShading: true } );
+
+  for ( let i = 0; i < 500; i ++ ) {
+
+    const build = new THREE.Mesh( buildGeometry, buildMaterial );
+    build.position.x = Math.random() * 4000 - 800;
+
+    build.position.y = 0;
+    build.position.z = Math.random() * 4000 - 800;
+    if (build.position.z < 400 && build.position.z > -400 && build.position.x < 400 && build.position.x > -400) continue;
+    build.scale.x = 20;
+    build.scale.y = Math.random() * 80 + 70;
+    build.scale.z = 20;
+    build.updateMatrix();
+    build.matrixAutoUpdate = false;
+    build.material.onBeforeCompile = ModifyShader;
+    scene.add( build );
+
+  }
+}
+function ModifyShader(s) {
+  shaders.push(s);
+  s.uniforms.fogTime = {value: 0.0};
 }
 export default App;
