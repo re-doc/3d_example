@@ -3,10 +3,16 @@ import React, { useRef, useEffect } from 'react'
 import './App.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import Stats from 'three/addons/libs/stats.module.js';
 
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+
+import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
+
 let container, stats;
-let camera, scene, renderer, uniforms, geometry, particleSystem, uniformsSky, resolution, requestAnimationFrameTimer;
+let camera, scene, renderer, uniforms, geometry, particleSystem, uniformsSky, resolution, requestAnimationFrameTimer, mixer, clock, plane, params;
 const particles = 10000;
 const vertexshaderSky = `
   varying vec2 vUv;
@@ -156,14 +162,55 @@ async function init(renderRef) {
   container = document.createElement( 'div' );
   renderRef.current.appendChild( container );
 
+  clock = new THREE.Clock();
+
+  // SCENE
+
+  scene = new THREE.Scene();
+  // scene.background = new THREE.Color( 0xcccccc );
+  // scene.fog = new THREE.FogExp2( 0xcccccc, 0.0002 );
   // CAMERA
 
   camera = new THREE.PerspectiveCamera( 40, innerWidth / innerHeight, 1, 1000000 );
   camera.position.set( 700, 200, - 500 );
 
-  // SCENE
+  const helperCamera = new THREE.CameraHelper( camera );
+  //scene.add( helperCamera );
 
-  scene = new THREE.Scene();
+
+  params = {
+    intensity: 1,
+    AmbientlightIntensity: 3,
+    aoMapIntensity: 1,
+    displacementScale: 1,
+    offsetX: 35,
+    offsetY: 56,
+    repeatX: 24,
+    repeatY: 24,
+    rotation: -Math.PI / 4, // positive is counter-clockwise
+    centerX: 62,
+    centerY: 42,
+    roughness: 1,
+    metalness: 0,
+    scaleNum: 0.2
+  };
+  const colorFormats = {
+    planeColor: '#ffffff',
+    int: 0xffffff,
+    object: { r: 1, g: 1, b: 1 },
+    array: [ 1, 1, 1 ]
+  };
+  // RENDERER
+
+  renderer = new THREE.WebGLRenderer( { antialias: true } );
+  renderer.setPixelRatio( window.devicePixelRatio );
+  renderer.setSize( innerWidth, innerHeight );
+  container.appendChild( renderer.domElement );
+  renderer.outputEncoding = THREE.sRGBEncoding;
+
+  //const pmremGenerator = new THREE.PMREMGenerator( renderer );
+
+  // scene.environment = pmremGenerator.fromScene( new RoomEnvironment(), 0.04 ).texture;
 
   resolution = new THREE.Vector3( window.innerWidth, window.innerHeight, window.devicePixelRatio );
 
@@ -176,12 +223,24 @@ async function init(renderRef) {
 
   // LIGHTS
 
-  const light = new THREE.DirectionalLight( 0xaabbff, 0.3 );
+  const light = new THREE.DirectionalLight( 0xaabbff, params.intensity );
   light.position.x = 300;
   light.position.y = 250;
   light.position.z = - 500;
   console.log('light', light);
   scene.add( light );
+
+  const Ambientlight = new THREE.AmbientLight( 0x404040, params.AmbientlightIntensity  ); // soft white light
+  scene.add( Ambientlight );
+
+  const helper = new THREE.DirectionalLightHelper( light, 5 );
+  scene.add( helper );
+
+  const size = 8000;
+  const divisions = 100;
+
+  const gridHelper = new THREE.GridHelper( size, divisions );
+  scene.add( gridHelper );
 
   uniformsSky = {
     time: { value: 1.0 },
@@ -267,19 +326,12 @@ async function init(renderRef) {
 
 
 
-  // scene.add( particleSystem );
-  // RENDERER
-
-  renderer = new THREE.WebGLRenderer( { antialias: true } );
-  renderer.setPixelRatio( window.devicePixelRatio );
-  renderer.setSize( innerWidth, innerHeight );
-  container.appendChild( renderer.domElement );
-  renderer.outputEncoding = THREE.sRGBEncoding;
+  scene.add( particleSystem );
 
   // CONTROLS
 
   const controls = new OrbitControls( camera, renderer.domElement );
-  controls.maxPolarAngle = 0.9 * Math.PI / 2;
+  // controls.maxPolarAngle = 0.9 * Math.PI / 2;
   // controls.enableZoom = false;
 
   // STATS
@@ -289,14 +341,135 @@ async function init(renderRef) {
 
   // MODEL
 
-  const loader = new THREE.ObjectLoader();
-  const object = await loader.loadAsync( 'lightmap/lightmap.json' );
-  scene.add( object );
+  //const loader = new THREE.ObjectLoader();
+  //const object = await loader.loadAsync( 'lightmap/lightmap.json' );
+  // scene.add( object );
+  const planeGeometry = new THREE.CircleGeometry( 4000);
+  const material = new THREE.MeshStandardMaterial( {
+    // color: colorFormats.int, 
+    side: THREE.DoubleSide,
+    map: new THREE.TextureLoader().load(
+      'textures/groundColor.jpg', (texture) => {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        // texture.repeat.set( 100, 100 );
+        // texture.format = THREE.RGBAFormat
+        updateUvTransform();
+      }
+    ),
+    // normalMap: new THREE.TextureLoader().load(
+    //   'textures/Ground_Grass_001_NORM.jpg', (texture) => {
+    //     texture.wrapS = THREE.RepeatWrapping;
+    //     texture.wrapT = THREE.RepeatWrapping;
+    //     texture.repeat.set( 80, 80 );
+    //   }
+    // ),
+    // aoMap: new THREE.TextureLoader().load(
+    //   'textures/Ground_Grass_001_OCC.jpg', (texture) => {
+    //     texture.wrapS = THREE.RepeatWrapping;
+    //     texture.wrapT = THREE.RepeatWrapping;
+    //     texture.repeat.set( 80, 80 );
+    //   }
+    // ),
+    displacementMap: new THREE.TextureLoader().load(
+      'textures/Ground_Grass_001_DISP.jpg', (texture) => {
+        texture.wrapS = THREE.RepeatWrapping;
+        texture.wrapT = THREE.RepeatWrapping;
+        texture.repeat.set( 80, 80 );
+      }
+    ),
+    //displacementScale: params.displacementScale,
+    //aoMapIntensity: params.aoMapIntensity,
+    roughness: params.roughness,
+    metalness: params.metalness,
+    shininess: 0
+  } );
 
+  plane = new THREE.Mesh( planeGeometry, material );
+  plane.rotateX(Math.PI/2)
+  scene.add( plane );
+
+  const dracoLoader = new DRACOLoader();
+  dracoLoader.setDecoderPath( 'draco/gltf/' );
+
+  const glftloader = new GLTFLoader();
+  glftloader.setDRACOLoader( dracoLoader );
+  const LittlestTokyoObject = await glftloader.loadAsync( 'models/LittlestTokyoLiner.glb')
+  console.log('LittlestTokyoObject', LittlestTokyoObject)
+  LittlestTokyoObject.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
+  // LittlestTokyoObject.scene.traverseVisible((obj) => {
+  //   if(obj.isMesh) {
+  //     console.log('obj', obj)
+  //     if (obj.material.map) {
+  //       obj.material.map.encoding = THREE.LinearEncoding 
+  //       obj.material.needsUpdate = true;
+  //     }
+
+  //   }
+  // })
+ 
+  // LittlestTokyoObject.scene.material.map.encoding = THREE.sRGBEncoding;
+  // LittlestTokyoObject.scene.material.needsUpdate = true;
+  scene.add( LittlestTokyoObject.scene);
+  // mixer = new THREE.AnimationMixer( LittlestTokyoObject.scene );
+	// mixer.clipAction( LittlestTokyoObject.animations[ 0 ] ).play();
   //
 
   window.addEventListener( 'resize', onWindowResize );
 
+
+  const gui = new GUI();
+
+  gui.add( params, 'intensity', 0, 3 ).step( 0.1 ).name( 'intensity' ).onChange( function ( value ) {
+
+    light.intensity = value;
+
+  } );
+  gui.add( params, 'AmbientlightIntensity', 0, 3 ).step( 0.1 ).name( 'AmbientlightIntensity' ).onChange( function ( value ) {
+
+    Ambientlight.intensity = value;
+
+  } );
+  
+  gui.add( params, 'aoMapIntensity', 0, 1 ).step( 0.1 ).name( 'aoMapIntensity' ).onChange( function ( value ) {
+
+    material.aoMapIntensity = value;
+
+  } );
+  gui.add( params, 'displacementScale', 0, 1 ).step( 0.1 ).name( 'displacementScale' ).onChange( function ( value ) {
+
+    material.displacementScale = value;
+
+  } );
+  gui.add( params, 'roughness', 0, 1 ).step( 0.1 ).name( 'roughness' ).onChange( function ( value ) {
+
+    material.roughness = value;
+
+  } );
+  gui.add( params, 'metalness', 0, 1 ).step( 0.1 ).name( 'metalness' ).onChange( function ( value ) {
+
+    material.metalness = value;
+
+  } );
+  gui.add( params, 'scaleNum', 0, 1 ).step( 0.1 ).name( 'scaleNum' ).onChange( function ( value ) {
+
+    LittlestTokyoObject.scene.scale.set(value,value,value)
+
+  } );
+  
+  gui.add( params, 'offsetX', 0.0, 100.0 ).step( 1.0 ).name( 'offset.x' ).onChange( updateUvTransform );
+  gui.add( params, 'offsetY', 0.0, 100.0 ).step( 1.0 ).name( 'offset.y' ).onChange( updateUvTransform );
+  gui.add( params, 'repeatX', 0.25, 100.0 ).step( 1.0 ).name( 'repeat.x' ).onChange( updateUvTransform );
+  gui.add( params, 'repeatY', 0.25, 200.0 ).step( 1.0 ).name( 'repeat.y' ).onChange( updateUvTransform );
+  gui.add( params, 'rotation', - 2.0, 2.0 ).step( 0.1 ).name( 'rotation' ).onChange( updateUvTransform );
+  gui.add( params, 'centerX', 0.0, 100.0 ).step( 1.0 ).name( 'center.x' ).onChange( updateUvTransform );
+  gui.add( params, 'centerY', 0.0, 100.0 ).step( 1.0 ).name( 'center.y' ).onChange( updateUvTransform );
+
+  gui.addColor( colorFormats, 'planeColor' ).onChange( function ( value ) {
+
+    material.color = new THREE.Color(value)
+
+  } );
 }
 
 function onWindowResize() {
@@ -340,6 +513,40 @@ function render() {
 
   uniformsSky[ 'time' ].value = performance.now() / 1000;
   // uniformsSky[ 'color' ].value.offsetHSL( 0.0005, 0, 0 );
+
+  //const delta = clock.getDelta();
+  //mixer.update( delta );
+
+  renderer.render( scene, camera );
+
+}
+function updateUvTransform() {
+
+  const texture = plane.material.map;
+
+  if ( texture.matrixAutoUpdate === true ) {
+
+    texture.offset.set( params.offsetX, params.offsetY );
+    texture.repeat.set( params.repeatX, params.repeatY );
+    texture.center.set( params.centerX, params.centerY );
+    texture.rotation = params.rotation; // rotation is around [ 0.5, 0.5 ]
+
+  } else {
+
+    // one way...
+    //texture.matrix.setUvTransform( params.offsetX, params.offsetY, params.repeatX, params.repeatY, params.rotation, params.centerX, params.centerY );
+
+    // another way...
+    texture.matrix
+        .identity()
+        .translate( - params.centerX, - params.centerY )
+        .rotate( params.rotation )					// I don't understand how rotation can preceed scale, but it seems to be required...
+        .scale( params.repeatX, params.repeatY )
+        .translate( params.centerX, params.centerY )
+        .translate( params.offsetX, params.offsetY );
+
+  }
+
   renderer.render( scene, camera );
 
 }
