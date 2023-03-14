@@ -13,7 +13,7 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 let container, stats;
 let camera, scene, renderer, uniforms, geometry, particleSystem, uniformsSky, resolution, requestAnimationFrameTimer, mixer, clock, plane, params, shaders = [], 
-previousRAF = null, gui;
+previousRAF = null, gui, buildMaterial;
 let totalTime = 0;
 const particles = 10000;
 let te;
@@ -50,13 +50,13 @@ const fragmentshaderSky = `
   vec3 Cloud(vec3 bgCol,vec3 ro,vec3 rd,vec3 cloudCol,float spd)
     {
         vec3 col = bgCol;
-        float t = time * 1.9 * spd;
-        vec2 sc = ro.xz + rd.xz*((1.)*50.0-ro.y)/rd.y;
-        vec2 p = 0.1*sc;
+        float t = time * 0.9 * spd;
+        vec2 sc = ro.xz + rd.xz*((3.)*40000.0-ro.y)/rd.y;
+        vec2 p = 0.00002*sc;
         float f = 0.0;
         float s = 0.5;
         float sum =0.;
-        for(int i=0;i<2;i++){
+        for(int i=0;i<20;i++){
           p += t;
           t *=1.5;
           f += s*textureLod( colorTexture, p/256.0, 0.0).x; p = m2*p*2.02;
@@ -82,15 +82,17 @@ const fragmentshaderSky = `
     //float speed      = 1.0;
     //vec4 tcolor = texture2D( colorTexture, vUv );
     //vec4 gray = vec4( vec3( tcolor.r * 0.3 + tcolor.g * 0.59 + tcolor.b * 0.11 ) + (time*(speed/30.)), 1.0 );
-    col = vec3(0.2,0.5,0.85)*1.0 - _fposition.y*_fposition.y;
-    col = Cloud(col,ro,_fposition,vec3(1.0,1.0,1.0),1.);
+    col = vec3(0.2,0.5,0.85)*1.1 - _fposition.y*_fposition.y * 0.5;
+   
 
     float sundot = clamp(dot(_fposition,Dir),0.0,1.0);
     col += 0.25*vec3(1.0,0.7,0.4)*pow( sundot,5.0 );
     col += 0.25*vec3(1.0,0.8,0.6)*pow( sundot,64.0 );
     col += 0.4*vec3(1.0,0.8,0.6)*pow( sundot,512.0 );
 
-    col = mix( col, 0.68*vec3(0.4,0.65,1.0), pow( 1.0-max(_fposition.y,0.0), 12.0 ) );
+    col = Cloud(col,ro,_fposition,vec3(1.0,0.95,1.0),1.);
+
+    col = mix( col, 0.68*vec3(0.4,0.65,1.0), pow( 1.0-max(_fposition.y,0.0), 5.0 ) );
     //gl_FragColor = gray * vec4( vec3( dProd ) * vec3( color ), 1.0 );
     gl_FragColor = vec4(col,1.0);
   }
@@ -329,7 +331,7 @@ function App() {
 
 async function init(renderRef) {
   params = {
-    intensity: 1,
+    intensity: 1.1,
     AmbientlightIntensity: 3,
     aoMapIntensity: 1,
     displacementScale: 1,
@@ -355,7 +357,7 @@ async function init(renderRef) {
   // SCENE
 
   scene = new THREE.Scene();
-  scene.fog = new THREE.FogExp2( 0xcccccc, params.fogNum );
+  // scene.fog = new THREE.FogExp2( 0xcccccc, params.fogNum );
   // CAMERA
 
   camera = new THREE.PerspectiveCamera( 40, innerWidth / innerHeight, 1, 1000000 );
@@ -367,8 +369,8 @@ async function init(renderRef) {
 
 
   const colorFormats = {
-    planeColor: '#ffffff',
-    int: 0xffffff,
+    buildMaterial: '#b1b2b2',
+    int: 0xb1b2b2,
     object: { r: 1, g: 1, b: 1 },
     array: [ 1, 1, 1 ]
   };
@@ -396,9 +398,9 @@ async function init(renderRef) {
   // LIGHTS
 
   const light = new THREE.DirectionalLight( 0xaabbff, params.intensity );
-  light.position.x = 300;
-  light.position.y = 250;
-  light.position.z = - 500;
+  light.position.x = 600;
+  light.position.y = 400;
+  light.position.z = - 1000;
 
   scene.add( light );
 
@@ -416,7 +418,7 @@ async function init(renderRef) {
 
   uniformsSky = {
     time: { value: 1.0 },
-    'colorTexture': { value: new THREE.TextureLoader().load( 'textures/water.jpg' ) },
+    'colorTexture': { value: new THREE.TextureLoader().load( 'textures/noise.png' ) },
     'color': { value: new THREE.Color( 0xff2200 ) },
     iResolution: { value: resolution },
     lightDir: light.position
@@ -729,9 +731,9 @@ async function init(renderRef) {
   gui.add( params, 'centerX', 0.0, 100.0 ).step( 1.0 ).name( 'center.x' ).onChange( updateUvTransform );
   gui.add( params, 'centerY', 0.0, 100.0 ).step( 1.0 ).name( 'center.y' ).onChange( updateUvTransform );
 
-  gui.addColor( colorFormats, 'planeColor' ).onChange( function ( value ) {
+  gui.addColor( colorFormats, 'buildMaterial' ).onChange( function ( value ) {
 
-    material.color = new THREE.Color(value)
+    buildMaterial.color = new THREE.Color(value)
 
   } );
 }
@@ -869,16 +871,16 @@ function addBuilding() {
 
   const buildGeometry = new THREE.BoxGeometry( 1, 1, 1 );
   geometry.translate( 0, 0.5, 0 );
-  const buildMaterial = new THREE.MeshPhongMaterial( { color: 0xffffff, flatShading: true } );
+  buildMaterial = new THREE.MeshPhongMaterial( { color: '#b1b2b2', flatShading: true } );
 
-  for ( let i = 0; i < 500; i ++ ) {
+  for ( let i = 0; i < 100; i ++ ) {
 
     const build = new THREE.Mesh( buildGeometry, buildMaterial );
-    build.position.x = Math.random() * 4000 - 800;
+    build.position.x = Math.random() * 2000 - 1000;
 
     build.position.y = 0;
-    build.position.z = Math.random() * 4000 - 800;
-    if (build.position.z < 400 && build.position.z > -400 && build.position.x < 400 && build.position.x > -400) continue;
+    build.position.z = Math.random() * 2000 - 1000;
+    if (build.position.z < 600 && build.position.z > -600 && build.position.x < 600 && build.position.x > -600) continue;
     build.scale.x = 20;
     build.scale.y = Math.random() * 80 + 70;
     build.scale.z = 20;
