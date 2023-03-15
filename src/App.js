@@ -76,7 +76,7 @@ const fragmentshaderSky = `
     vec3 _fposition = normalize(fposition);
     vec3 col = vec3(1.0,1.0,1.0);  
     vec3 ro = vec3 (0.,0.,0.);
-    vec3 Dir = normalize( vec3(0.5,0.3,0.0) );
+    vec3 Dir = normalize( vec3(0.5,0.25,-0.5) );
 
     //float dProd = dot( vNormal, light ) * 0.5 + 0.5;
     //float speed      = 1.0;
@@ -324,7 +324,8 @@ function App() {
 
   return (
     <div className="App">
-      <div ref={renderRef}></div>
+      <div className='mask'></div>
+      <div className='content' ref={renderRef}></div>
     </div>
   );
 }
