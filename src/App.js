@@ -11,6 +11,8 @@ import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
 import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
+import TerrainLoader from './libs/TerrainLoader'
+
 let container, stats;
 let camera, scene, renderer, uniforms, geometry, particleSystem, uniformsSky, resolution, requestAnimationFrameTimer, mixer, clock, plane, params, shaders = [], 
 previousRAF = null, gui, buildMaterial;
@@ -346,7 +348,7 @@ async function init(renderRef) {
     roughness: 1,
     metalness: 0,
     scaleNum: 2.9,
-    fogNum: 0.0000045
+    fogNum: 0.00045
   };
   const { innerWidth, innerHeight } = window;
  
@@ -415,7 +417,7 @@ async function init(renderRef) {
   const divisions = 100;
 
   const gridHelper = new THREE.GridHelper( size, divisions );
-  scene.add( gridHelper );
+  // scene.add( gridHelper );
 
   uniformsSky = {
     time: { value: 1.0 },
@@ -517,6 +519,8 @@ async function init(renderRef) {
   stats = new Stats();
   container.appendChild( stats.dom );
 
+  // 
+
   // MODEL
 
   //const loader = new THREE.ObjectLoader();
@@ -565,7 +569,32 @@ async function init(renderRef) {
 
   plane = new THREE.Mesh( planeGeometry, material );
   plane.rotateX(Math.PI/2)
-  scene.add( plane );
+  // scene.add( plane );
+
+  // terrian
+  let terrainLoader = new TerrainLoader();
+  terrainLoader.load('TerrainData/jotunheimen.bin', function(data) {
+    console.log('data', data)
+    let terrainGeometry = new THREE.PlaneGeometry(8000, 8000, 199, 199);
+    console.log('terrainGeometry', terrainGeometry)
+    const count = terrainGeometry.attributes.position.count
+    const verticesArray = terrainGeometry.attributes.position.array
+    for (let i = 0; i < count; i++) {
+      const _i = (i + 1) * 3 - 1
+      verticesArray[_i] = data[i] / 65535 * 800;
+    }
+
+    let terrainMaterial = new THREE.MeshLambertMaterial({
+        map: new THREE.TextureLoader().load('textures/jotunheimen-texture.jpg')
+    });
+
+    let terrainplane = new THREE.Mesh(terrainGeometry, terrainMaterial);
+    terrainplane.rotateX( -Math.PI / 2 );
+    terrainplane.translateZ(-600);
+    scene.add(terrainplane);
+
+  });
+
 
   const dracoLoader = new DRACOLoader();
   dracoLoader.setDecoderPath( 'draco/gltf/' );
@@ -677,7 +706,7 @@ async function init(renderRef) {
 	// mixer.clipAction( LittlestTokyoObject.animations[ 0 ] ).play();
   //
 
-  addBuilding()
+  // addBuilding()
   
   window.addEventListener( 'resize', onWindowResize );
 
