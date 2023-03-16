@@ -13,9 +13,11 @@ import { GUI } from 'three/addons/libs/lil-gui.module.min.js';
 
 import TerrainLoader from './libs/TerrainLoader'
 
+import { TransformControls } from 'three/addons/controls/TransformControls.js';
+
 let container, stats;
 let camera, scene, renderer, uniforms, geometry, particleSystem, uniformsSky, resolution, requestAnimationFrameTimer, mixer, clock, plane, params, shaders = [], 
-previousRAF = null, gui, buildMaterial;
+previousRAF = null, gui, buildMaterial, control;
 let totalTime = 0;
 const particles = 10000;
 let te;
@@ -511,6 +513,16 @@ async function init(renderRef) {
   // CONTROLS
 
   const controls = new OrbitControls( camera, renderer.domElement );
+
+  control = new TransformControls( camera, renderer.domElement );
+  control.addEventListener( 'change', () => {
+    renderer.render( scene, camera );
+  } );
+  control.addEventListener( 'dragging-changed', function ( event ) {
+    console.log('event', event)
+    controls.enabled = ! event.value;
+
+  } );
   // controls.maxPolarAngle = 0.9 * Math.PI / 2;
   // controls.enableZoom = false;
 
@@ -571,9 +583,11 @@ async function init(renderRef) {
   plane.rotateX(Math.PI/2)
   // scene.add( plane );
 
+  console.log('scene', scene)
+
   // terrian
   let terrainLoader = new TerrainLoader();
-  terrainLoader.load('TerrainData/jotunheimen.bin', function(data) {
+  terrainLoader.load('TerrainData/groundInt.bin', function(data) {
     console.log('data', data)
     let terrainGeometry = new THREE.PlaneGeometry(8000, 8000, 199, 199);
     console.log('terrainGeometry', terrainGeometry)
@@ -585,107 +599,115 @@ async function init(renderRef) {
     }
 
     let terrainMaterial = new THREE.MeshLambertMaterial({
-        map: new THREE.TextureLoader().load('textures/jotunheimen-texture.jpg')
+        map: new THREE.TextureLoader().load('textures/colorGround2.jpg')
     });
 
     let terrainplane = new THREE.Mesh(terrainGeometry, terrainMaterial);
     terrainplane.rotateX( -Math.PI / 2 );
-    terrainplane.translateZ(-600);
+    terrainplane.translateZ(292);
     scene.add(terrainplane);
+    terrainplane.name = 'terrainplane';
+    control.attach( terrainplane );
+    scene.add( control );
+
 
   });
 
-
+  const buildsGroup = new THREE.Group()
+  scene.add(buildsGroup);
+  buildsGroup.translateX(2083.8)
+  buildsGroup.translateZ(-2058.6)
+  // 2083.7792052676978, y: 292, z: 2058.6449035209525
   const dracoLoader = new DRACOLoader();
   dracoLoader.setDecoderPath( 'draco/gltf/' );
 
   const glftloader = new GLTFLoader();
   glftloader.setDRACOLoader( dracoLoader );
-  const LittlestTokyoObject = await glftloader.loadAsync( 'models/librarywithTexture.glb')
-  LittlestTokyoObject.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
+  const librarywithTexture = await glftloader.loadAsync( 'models/librarywithTexture.glb')
+  librarywithTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
 
   const groundwithTexture = await glftloader.loadAsync( 'models/groundwithTexture.glb')
   groundwithTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
   groundwithTexture.scene.position.set(0, 1, 0);
-  scene.add( groundwithTexture.scene);
-  console.log('groundwithTexture.scene', groundwithTexture.scene)
+  buildsGroup.add( groundwithTexture.scene);
+  //console.log('groundwithTexture.scene', groundwithTexture.scene)
 
   const monitoringwithTexture = await glftloader.loadAsync( 'models/monitoringwithTexture.glb')
   monitoringwithTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( monitoringwithTexture.scene);
+  buildsGroup.add( monitoringwithTexture.scene);
 
   const streetLampwithTexture = await glftloader.loadAsync( 'models/streetLampwithTexture.glb')
   streetLampwithTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( streetLampwithTexture.scene);
+  buildsGroup.add( streetLampwithTexture.scene);
 
   const stadiumTexture = await glftloader.loadAsync( 'models/stadiumTexture.glb')
   stadiumTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( stadiumTexture.scene);
+  buildsGroup.add( stadiumTexture.scene);
 
   const fenceTexture = await glftloader.loadAsync( 'models/fenceTexture.glb')
   fenceTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( fenceTexture.scene);
+  buildsGroup.add( fenceTexture.scene);
 
   const clockTexture = await glftloader.loadAsync( 'models/clockTexture.glb')
   clockTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( clockTexture.scene);
+  buildsGroup.add( clockTexture.scene);
   
   const playgroundTexture = await glftloader.loadAsync( 'models/playgroundTexture.glb')
   playgroundTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
   playgroundTexture.scene.position.set(0, 1, 0);
-  scene.add( playgroundTexture.scene);
+  buildsGroup.add( playgroundTexture.scene);
 
   const dormTexture = await glftloader.loadAsync( 'models/dormTexture.glb')
   dormTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( dormTexture.scene);
+  buildsGroup.add( dormTexture.scene);
 
   const teaching_A1Texture = await glftloader.loadAsync( 'models/teaching_A1Texture.glb')
   teaching_A1Texture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_A1Texture.scene);
+  buildsGroup.add( teaching_A1Texture.scene);
 
   const teaching_A3Texutre = await glftloader.loadAsync( 'models/teaching_A3Texutre.glb')
   teaching_A3Texutre.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_A3Texutre.scene);
+  buildsGroup.add( teaching_A3Texutre.scene);
   
   const teaching_A2Texture = await glftloader.loadAsync( 'models/teaching_A2Texture.glb')
   teaching_A2Texture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_A2Texture.scene);
+  buildsGroup.add( teaching_A2Texture.scene);
   
   const teaching_A4Texture = await glftloader.loadAsync( 'models/teaching_A4Texture.glb')
   teaching_A4Texture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_A4Texture.scene);
+  buildsGroup.add( teaching_A4Texture.scene);
 
   const diningTexture = await glftloader.loadAsync( 'models/diningTexture.glb')
   diningTexture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( diningTexture.scene);
+  buildsGroup.add( diningTexture.scene);
   
   const office_A1Texture = await glftloader.loadAsync( 'models/office_A1Texture.glb')
   office_A1Texture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( office_A1Texture.scene);
+  buildsGroup.add( office_A1Texture.scene);
 
   const office_A2Texture = await glftloader.loadAsync( 'models/office_A2Texture.glb')
   office_A2Texture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( office_A2Texture.scene);
+  buildsGroup.add( office_A2Texture.scene);
   
   const office_A3Texture = await glftloader.loadAsync( 'models/office_A3Texture.glb')
   office_A3Texture.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( office_A3Texture.scene);
+  buildsGroup.add( office_A3Texture.scene);
   
   const teaching_B1T = await glftloader.loadAsync( 'models/teaching_B1T.glb')
   teaching_B1T.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_B1T.scene);
+  buildsGroup.add( teaching_B1T.scene);
 
   const teaching_B2T = await glftloader.loadAsync( 'models/teaching_B2T.glb')
   teaching_B2T.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_B2T.scene);
+  buildsGroup.add( teaching_B2T.scene);
 
   const teaching_B3T = await glftloader.loadAsync( 'models/teaching_B3T.glb')
   teaching_B3T.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_B3T.scene);
+  buildsGroup.add( teaching_B3T.scene);
 
   const teaching_B4T = await glftloader.loadAsync( 'models/teaching_B4T.glb')
   teaching_B4T.scene.scale.set(params.scaleNum,params.scaleNum,params.scaleNum)
-  scene.add( teaching_B4T.scene);
+  buildsGroup.add( teaching_B4T.scene);
 
   
   // LittlestTokyoObject.scene.traverseVisible((obj) => {
@@ -701,7 +723,7 @@ async function init(renderRef) {
  
   // LittlestTokyoObject.scene.material.map.encoding = THREE.sRGBEncoding;
   // LittlestTokyoObject.scene.material.needsUpdate = true;
-  scene.add( LittlestTokyoObject.scene);
+  buildsGroup.add( librarywithTexture.scene);
   // mixer = new THREE.AnimationMixer( LittlestTokyoObject.scene );
 	// mixer.clipAction( LittlestTokyoObject.animations[ 0 ] ).play();
   //
