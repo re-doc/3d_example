@@ -1,0 +1,17 @@
+{
+  "files": {
+    "main.css": "/static/css/main.4c844356.css",
+    "main.js": "/static/js/main.8e212544.js",
+    "static/js/787.2edc9a7e.chunk.js": "/static/js/787.2edc9a7e.chunk.js",
+    "static/media/xty-day-mask.png": "/static/media/xty-day-mask.958c07ae66b37daa606b.png",
+    "static/media/logo.svg": "/static/media/logo.6ce24c58023cc2f8fd88fe9d219db6c6.svg",
+    "index.html": "/index.html",
+    "main.4c844356.css.map": "/static/css/main.4c844356.css.map",
+    "main.8e212544.js.map": "/static/js/main.8e212544.js.map",
+    "787.2edc9a7e.chunk.js.map": "/static/js/787.2edc9a7e.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.4c844356.css",
+    "static/js/main.8e212544.js"
+  ]
+}
