@@ -22,7 +22,7 @@ TerrainLoader.prototype = {
 
 			request.addEventListener( 'load', function ( event ) {
 
-				onLoad( new Int16Array( event.target.response ) );
+				onLoad( new Uint16Array( event.target.response ) );
 				scope.manager.itemEnd( url );
 
 			}, false );
